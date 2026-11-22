@@ -6,22 +6,24 @@
 <title>LED Detector</title>
 
 <style>
+
 body{
     margin:0;
+    padding:10px;
     background:#111;
     color:white;
     font-family:sans-serif;
 }
 
-h1{
+h2{
+    margin:0 0 10px 0;
     text-align:center;
-    font-size:20px;
+    font-size:18px;
 }
 
-#container{
-    max-width:900px;
-    margin:auto;
-    padding:10px;
+button{
+    padding:10px 16px;
+    margin-bottom:10px;
 }
 
 .video-wrap{
@@ -31,45 +33,52 @@ h1{
 video{
     width:100%;
     background:black;
+    border-radius:8px;
 }
 
 .target{
     position:absolute;
-    width:40px;
-    height:40px;
-    border:2px solid lime;
     left:50%;
     top:50%;
+    width:20px;
+    height:20px;
+    border:2px solid lime;
     transform:translate(-50%,-50%);
+}
+
+canvas{
+    width:100%;
+    height:160px;
+    background:black;
+    border-radius:8px;
+    margin-top:8px;
+}
+
+.control-panel{
+    margin-top:10px;
+}
+
+.control-panel label{
+    display:block;
+    margin:10px 0;
+}
+
+.control-panel span{
+    font-weight:bold;
 }
 
 .stats{
     margin-top:10px;
     display:grid;
-    grid-template-columns:repeat(2,1fr);
-    gap:10px;
+    grid-template-columns:1fr 1fr;
+    gap:4px;
 }
 
 .card{
     background:#222;
-    padding:10px;
-    border-radius:8px;
-}
-
-canvas{
-    width:100%;
-    height:150px;
-    background:black;
-    margin-top:10px;
-}
-
-button{
-    padding:10px 20px;
-    margin:10px 0;
-}
-
-input[type=range]{
-    width:100%;
+    padding:6px;
+    border-radius:6px;
+    font-size:12px;
 }
 
 .status-on{
@@ -81,19 +90,63 @@ input[type=range]{
     color:#ff5555;
     font-weight:bold;
 }
+
+input[type=range]{
+    width:100%;
+}
+
 </style>
 </head>
 <body>
 
-<div id="container">
+<h2>LED Detector</h2>
 
-<h1>LED Detector</h1>
-
-<button id="startBtn">カメラ開始</button>
+<button id="startBtn">
+カメラ開始
+</button>
 
 <div class="video-wrap">
-    <video id="video" autoplay playsinline></video>
+
+    <video
+        id="video"
+        autoplay
+        playsinline>
+    </video>
+
     <div class="target"></div>
+
+</div>
+
+<canvas
+    id="graph"
+    width="800"
+    height="200">
+</canvas>
+
+<div class="control-panel">
+
+    <label>
+        ROIサイズ :
+        <span id="roiValue">20</span> px
+        <input
+            type="range"
+            id="roiSize"
+            min="3"
+            max="50"
+            value="20">
+    </label>
+
+    <label>
+        閾値 :
+        <span id="thresholdValue">80</span>
+        <input
+            type="range"
+            id="threshold"
+            min="0"
+            max="255"
+            value="80">
+    </label>
+
 </div>
 
 <div class="stats">
@@ -109,13 +162,8 @@ input[type=range]{
     </div>
 
     <div class="card">
-        推定周期<br>
-        <span id="period">---</span>
-    </div>
-
-    <div class="card">
-        推定周波数<br>
-        <span id="freq">---</span>
+        差分<br>
+        <span id="diff">0</span>
     </div>
 
     <div class="card">
@@ -124,338 +172,52 @@ input[type=range]{
     </div>
 
     <div class="card">
-        閾値<br>
-        <input
-            type="range"
-            id="threshold"
-            min="0"
-            max="255"
-            value="80">
-        <span id="thresholdValue">80</span>
+        周期<br>
+        <span id="period">---</span>
     </div>
 
     <div class="card">
-        閾値との差分<br>
-        <span id="diff">0</span>
+        周波数<br>
+        <span id="freq">---</span>
     </div>
-
-</div>
-
-<canvas id="graph" width="800" height="200"></canvas>
 
 </div>
 
 <script>
 
-const video=document.getElementById("video");
+const video =
+document.getElementById("video");
 
-const graph=document.getElementById("graph");
-const ctx=graph.getContext("2d");
+const graph =
+document.getElementById("graph");
 
-const workCanvas=document.createElement("canvas");
-const workCtx=workCanvas.getContext("2d");
+const ctx =
+graph.getContext("2d");
 
-const thresholdSlider=
+const workCanvas =
+document.createElement("canvas");
+
+const workCtx =
+workCanvas.getContext("2d");
+
+const thresholdSlider =
 document.getElementById("threshold");
 
-const thresholdValue=
-document.getElementById("thresholdValue");
-
-thresholdSlider.addEventListener(
-    "input",
-    ()=>{
-        thresholdValue.textContent=
-        thresholdSlider.value;
-    }
+const thresholdValue =
+document.getElementById(
+"thresholdValue"
 );
 
-let history=[];
-let transitions=[];
+const roiSlider =
+document.getElementById("roiSize");
 
-let prevState=null;
-
-let frameCount=0;
-let lastFpsTime=performance.now();
-
-document
-.getElementById("startBtn")
-.addEventListener(
-    "click",
-    startCamera
+const roiValue =
+document.getElementById(
+"roiValue"
 );
 
-async function startCamera(){
-
-    const stream=
-    await navigator.mediaDevices.getUserMedia({
-
-        video:{
-            facingMode:"environment"
-        }
-
-    });
-
-    video.srcObject=stream;
-
-    video.onloadedmetadata=()=>{
-
-        workCanvas.width=
-        video.videoWidth;
-
-        workCanvas.height=
-        video.videoHeight;
-
-        requestAnimationFrame(analyze);
-    };
-}
-
-function analyze(){
-
-    if(video.videoWidth===0){
-
-        requestAnimationFrame(analyze);
-        return;
-    }
-
-    workCtx.drawImage(
-        video,
-        0,
-        0,
-        workCanvas.width,
-        workCanvas.height
-    );
-
-    const size=20;
-
-    const x=
-    workCanvas.width/2-size/2;
-
-    const y=
-    workCanvas.height/2-size/2;
-
-    const image=
-    workCtx.getImageData(
-        x,
-        y,
-        size,
-        size
-    );
-
-    let sum=0;
-
-    for(
-        let i=0;
-        i<image.data.length;
-        i+=4
-    ){
-
-        const r=image.data[i];
-        const g=image.data[i+1];
-        const b=image.data[i+2];
-
-        sum+=(r+g+b)/3;
-    }
-
-    const brightness=
-    sum/(image.data.length/4);
-
-    document
-    .getElementById("brightness")
-    .textContent=
-    brightness.toFixed(1);
-
-    const threshold=
-    Number(
-        thresholdSlider.value
-    );
-
-    const diff=
-    brightness-threshold;
-
-    document
-    .getElementById("diff")
-    .textContent=
-    diff.toFixed(1);
-
-    const state=
-    brightness>threshold;
-
-    document
-    .getElementById("state")
-    .textContent=
-    state ? "ON" : "OFF";
-
-    document
-    .getElementById("state")
-    .className=
-    state ?
-    "status-on" :
-    "status-off";
-
-    const now=
-    performance.now();
-
-    if(
-        prevState!==null &&
-        prevState!==state
-    ){
-
-        transitions.push(now);
-
-        if(
-            transitions.length>10
-        ){
-            transitions.shift();
-        }
-
-        calculateFrequency();
-    }
-
-    prevState=state;
-
-    history.push(brightness);
-
-    if(history.length>300){
-
-        history.shift();
-    }
-
-    drawGraph(threshold);
-
-    frameCount++;
-
-    if(
-        now-lastFpsTime>1000
-    ){
-
-        const fps=
-        frameCount*1000 /
-        (now-lastFpsTime);
-
-        document
-        .getElementById("fps")
-        .textContent=
-        fps.toFixed(1);
-
-        frameCount=0;
-
-        lastFpsTime=now;
-    }
-
-    requestAnimationFrame(
-        analyze
-    );
-}
-
-function calculateFrequency(){
-
-    if(
-        transitions.length<4
-    ){
-        return;
-    }
-
-    const periods=[];
-
-    for(
-        let i=2;
-        i<transitions.length;
-        i++
-    ){
-
-        periods.push(
-
-            transitions[i]-
-            transitions[i-2]
-
-        );
-    }
-
-    const avg=
-
-    periods.reduce(
-        (a,b)=>a+b,
-        0
-    ) / periods.length;
-
-    document
-    .getElementById("period")
-    .textContent=
-    avg.toFixed(0)+" ms";
-
-    document
-    .getElementById("freq")
-    .textContent=
-    (1000/avg)
-    .toFixed(2)
-    +" Hz";
-}
-
-function drawGraph(threshold){
-
-    ctx.clearRect(
-        0,
-        0,
-        graph.width,
-        graph.height
-    );
-
-    ctx.strokeStyle="#00ff55";
-
-    ctx.beginPath();
-
-    history.forEach(
-        (v,i)=>{
-
-        const x=
-        i*
-        (
-            graph.width/
-            history.length
-        );
-
-        const y=
-        graph.height-
-        (v/255*
-        graph.height);
-
-        if(i===0){
-
-            ctx.moveTo(x,y);
-
-        }else{
-
-            ctx.lineTo(x,y);
-        }
-    });
-
-    ctx.stroke();
-
-    const thresholdY=
-    graph.height-
-    (
-        threshold/255*
-        graph.height
-    );
-
-    ctx.strokeStyle="red";
-
-    ctx.beginPath();
-
-    ctx.moveTo(
-        0,
-        thresholdY
-    );
-
-    ctx.lineTo(
-        graph.width,
-        thresholdY
-    );
-
-    ctx.stroke();
-}
-
-</script>
-
-</body>
-</html>
+const target =
+document.querySelector(".target");
+
+let history = [];
+let transitions = [];
