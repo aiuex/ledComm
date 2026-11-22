@@ -19,7 +19,7 @@ h1{
 }
 
 #container{
-    max-width:800px;
+    max-width:900px;
     margin:auto;
     padding:10px;
 }
@@ -68,12 +68,18 @@ button{
     margin:10px 0;
 }
 
+input[type=range]{
+    width:100%;
+}
+
 .status-on{
     color:#00ff55;
+    font-weight:bold;
 }
 
 .status-off{
     color:#ff5555;
+    font-weight:bold;
 }
 </style>
 </head>
@@ -117,6 +123,22 @@ button{
         <span id="fps">---</span>
     </div>
 
+    <div class="card">
+        閾値<br>
+        <input
+            type="range"
+            id="threshold"
+            min="0"
+            max="255"
+            value="80">
+        <span id="thresholdValue">80</span>
+    </div>
+
+    <div class="card">
+        閾値との差分<br>
+        <span id="diff">0</span>
+    </div>
+
 </div>
 
 <canvas id="graph" width="800" height="200"></canvas>
@@ -133,6 +155,20 @@ const ctx=graph.getContext("2d");
 const workCanvas=document.createElement("canvas");
 const workCtx=workCanvas.getContext("2d");
 
+const thresholdSlider=
+document.getElementById("threshold");
+
+const thresholdValue=
+document.getElementById("thresholdValue");
+
+thresholdSlider.addEventListener(
+    "input",
+    ()=>{
+        thresholdValue.textContent=
+        thresholdSlider.value;
+    }
+);
+
 let history=[];
 let transitions=[];
 
@@ -141,8 +177,12 @@ let prevState=null;
 let frameCount=0;
 let lastFpsTime=performance.now();
 
-document.getElementById("startBtn")
-.addEventListener("click",startCamera);
+document
+.getElementById("startBtn")
+.addEventListener(
+    "click",
+    startCamera
+);
 
 async function startCamera(){
 
@@ -159,11 +199,13 @@ async function startCamera(){
 
     video.onloadedmetadata=()=>{
 
-        workCanvas.width=video.videoWidth;
-        workCanvas.height=video.videoHeight;
+        workCanvas.width=
+        video.videoWidth;
+
+        workCanvas.height=
+        video.videoHeight;
 
         requestAnimationFrame(analyze);
-
     };
 }
 
@@ -201,7 +243,11 @@ function analyze(){
 
     let sum=0;
 
-    for(let i=0;i<image.data.length;i+=4){
+    for(
+        let i=0;
+        i<image.data.length;
+        i+=4
+    ){
 
         const r=image.data[i];
         const g=image.data[i+1];
@@ -213,35 +259,52 @@ function analyze(){
     const brightness=
     sum/(image.data.length/4);
 
-    document.getElementById(
-        "brightness"
-    ).textContent=
+    document
+    .getElementById("brightness")
+    .textContent=
     brightness.toFixed(1);
 
-    const threshold=80;
+    const threshold=
+    Number(
+        thresholdSlider.value
+    );
+
+    const diff=
+    brightness-threshold;
+
+    document
+    .getElementById("diff")
+    .textContent=
+    diff.toFixed(1);
 
     const state=
     brightness>threshold;
 
-    document.getElementById("state")
+    document
+    .getElementById("state")
     .textContent=
-    state?"ON":"OFF";
+    state ? "ON" : "OFF";
 
-    document.getElementById("state")
+    document
+    .getElementById("state")
     .className=
-    state?
-    "status-on":
+    state ?
+    "status-on" :
     "status-off";
 
-    const now=performance.now();
+    const now=
+    performance.now();
 
-    if(prevState!==null &&
-       prevState!==state){
+    if(
+        prevState!==null &&
+        prevState!==state
+    ){
 
         transitions.push(now);
 
-        if(transitions.length>10){
-
+        if(
+            transitions.length>10
+        ){
             transitions.shift();
         }
 
@@ -257,57 +320,78 @@ function analyze(){
         history.shift();
     }
 
-    drawGraph();
+    drawGraph(threshold);
 
     frameCount++;
 
-    if(now-lastFpsTime>1000){
+    if(
+        now-lastFpsTime>1000
+    ){
 
         const fps=
-        frameCount*1000/
+        frameCount*1000 /
         (now-lastFpsTime);
 
-        document.getElementById("fps")
+        document
+        .getElementById("fps")
         .textContent=
         fps.toFixed(1);
 
         frameCount=0;
+
         lastFpsTime=now;
     }
 
-    requestAnimationFrame(analyze);
+    requestAnimationFrame(
+        analyze
+    );
 }
 
 function calculateFrequency(){
 
-    if(transitions.length<4) return;
+    if(
+        transitions.length<4
+    ){
+        return;
+    }
 
     const periods=[];
 
-    for(let i=2;i<transitions.length;i++){
+    for(
+        let i=2;
+        i<transitions.length;
+        i++
+    ){
 
         periods.push(
+
             transitions[i]-
             transitions[i-2]
+
         );
     }
 
     const avg=
-    periods.reduce((a,b)=>a+b,0)
-    /periods.length;
 
-    document.getElementById(
-        "period"
-    ).textContent=
+    periods.reduce(
+        (a,b)=>a+b,
+        0
+    ) / periods.length;
+
+    document
+    .getElementById("period")
+    .textContent=
     avg.toFixed(0)+" ms";
 
-    document.getElementById(
-        "freq"
-    ).textContent=
-    (1000/avg).toFixed(2)+" Hz";
+    document
+    .getElementById("freq")
+    .textContent=
+    (1000/avg)
+    .toFixed(2)
+    +" Hz";
 }
 
-function drawGraph(){
+function drawGraph(threshold){
 
     ctx.clearRect(
         0,
@@ -317,17 +401,23 @@ function drawGraph(){
     );
 
     ctx.strokeStyle="#00ff55";
+
     ctx.beginPath();
 
-    history.forEach((v,i)=>{
+    history.forEach(
+        (v,i)=>{
 
         const x=
-        i*(graph.width/history.length);
+        i*
+        (
+            graph.width/
+            history.length
+        );
 
         const y=
         graph.height-
-        v/255*
-        graph.height;
+        (v/255*
+        graph.height);
 
         if(i===0){
 
@@ -341,19 +431,31 @@ function drawGraph(){
 
     ctx.stroke();
 
-    ctx.strokeStyle="red";
-
     const thresholdY=
     graph.height-
-    (80/255*
-    graph.height);
+    (
+        threshold/255*
+        graph.height
+    );
+
+    ctx.strokeStyle="red";
 
     ctx.beginPath();
-    ctx.moveTo(0,thresholdY);
-    ctx.lineTo(graph.width,thresholdY);
+
+    ctx.moveTo(
+        0,
+        thresholdY
+    );
+
+    ctx.lineTo(
+        graph.width,
+        thresholdY
+    );
+
     ctx.stroke();
 }
 
 </script>
+
 </body>
 </html>
