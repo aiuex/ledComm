@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Light Curtain LED Simulator</title>
+
+<style>
+*{
+    box-sizing:border-box;
+}
+
+body{
+    margin:0;
+    background:#1e1e1e;
+    color:#fff;
+    font-family:Arial,sans-serif;
+}
+
+.container{
+    display:flex;
+    flex-wrap:wrap;
+    gap:20px;
+    padding:20px;
+}
+
+.display-area{
+    flex:0 0 240px;
+}
+
+.control-area{
+    flex:1;
+    min-width:350px;
+}
+
+.display-panel{
+    width:80px;
+    background:#111;
+    border:1px solid #444;
+    border-radius:4px;
+    padding:10px 0;
+    margin:20px auto;
+}
+
+.led-row{
+    height:22px;
+    display:flex;
+    align-items:center;
+    margin:12px 0;
+}
+
+.led{
+    width:5px;
+    height:5px;
+    border-radius:50%;
+    margin-left:12px;
+    background:#111;
+    border:1px solid #333;
+}
+
+.label{
+    font-size:8px;
+    color:#aaa;
+    margin-left:10px;
+    letter-spacing:0.5px;
+}
+
+.toolbar{
+    margin-bottom:20px;
+}
+
+button{
+    padding:10px 20px;
+    margin-right:10px;
+    cursor:pointer;
+}
+
+.mode-btn{
+    background:#444;
+    color:white;
+    border:none;
+}
+
+.led-config{
+    background:#2e2e2e;
+    border-radius:8px;
+    padding:12px;
+    margin-bottom:12px;
+}
+
+.led-config h3{
+    margin-top:0;
+}
+
+.pattern{
+    display:flex;
+    gap:6px;
+    margin-top:10px;
+    flex-wrap:wrap;
+}
+
+.pattern label{
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    font-size:12px;
+}
+
+input[type=range]{
+    width:200px;
+}
+
+.fullscreen-display body{
+    background:black;
+}
+
+.display-only{
+    display:none;
+}
+
+.display-mode .control-area{
+    display:none;
+}
+
+.display-mode .display-area{
+    flex:1;
+    display:flex;
+    justify-content:center;
+    align-items:center;
+    min-height:100vh;
+}
+
+.display-mode .display-panel{
+    transform:scale(4);
+}
+</style>
+</head>
+
+<body>
+
+<div class="container">
+
+    <div class="display-area">
+
+        <div class="toolbar">
+            <button onclick="startSimulation()">START</button>
+            <button onclick="stopSimulation()">STOP</button>
+            <button class="mode-btn" onclick="toggleDisplayMode()">
+                撮影モード
+            </button>
+        </div>
+
+        <div class="display-panel">
+
+            <div class="led-row">
+                <div class="led" id="led0"></div>
+                <span class="label">PWR</span>
+            </div>
+
+            <div class="led-row">
+                <div class="led" id="led1"></div>
+                <span class="label">ERR</span>
+            </div>
+
+            <div class="led-row">
+                <div class="led" id="led2"></div>
+                <span class="label">OSSD</span>
+            </div>
+
+            <div class="led-row">
+                <div class="led" id="led3"></div>
+                <span class="label">ALIGN</span>
+            </div>
+
+        </div>
+
+    </div>
+
+    <div class="control-area" id="controls"></div>
+
+</div>
+
+<script>
+
+const leds=[];
+
+for(let i=0;i<4;i++){
+
+    const div=document.createElement("div");
+
+    div.className="led-config";
+
+    div.innerHTML=`
+    <h3>LED ${i+1}</h3>
+
+    <div>
+        色：
+        <select id="color${i}">
+            <option value="red">赤</option>
+            <option value="orange">オレンジ</option>
+            <option value="lime">緑</option>
+        </select>
+    </div>
+
+    <div style="margin-top:10px;">
+        ステップ時間：
+        <input
+            id="period${i}"
+            type="range"
+            min="10"
+            max="500"
+            value="100">
+        <span id="periodText${i}">100</span>ms
+    </div>
+
+    <div class="pattern">
+        ${Array.from({length:6}).map((_,idx)=>`
+            <label>
+                ${idx+1}
+                <input
+                    type="checkbox"
+                    id="p${i}_${idx}"
+                    checked>
+            </label>
+        `).join('')}
+    </div>
+    `;
+
+    document.getElementById("controls").appendChild(div);
+
+    document
+        .getElementById(`period${i}`)
+        .addEventListener("input",e=>{
+            document.getElementById(
+                `periodText${i}`
+            ).textContent=e.target.value;
+        });
+
+    leds.push({
+        timer:null,
+        step:0
+    });
+}
+
+function lightColor(color){
+
+    switch(color){
+
+        case "red":
+            return "#ff3030";
+
+        case "orange":
+            return "#ff9900";
+
+        case "lime":
+            return "#00ff55";
+    }
+}
+
+function updateLed(index,state){
+
+    const led=document.getElementById(`led${index}`);
+
+    const color=document
+        .getElementById(`color${index}`)
+        .value;
+
+    if(state){
+
+        const c=lightColor(color);
+
+        led.style.background=c;
+
+        led.style.boxShadow=
+            `0 0 2px ${c},
+             0 0 4px ${c},
+             0 0 8px ${c}`;
+
+    }else{
+
+        led.style.background="#111";
+        led.style.boxShadow="none";
+    }
+}
+
+function runLed(index){
+
+    function nextStep(){
+
+        const step=leds[index].step;
+
+        const state=document.getElementById(
+            `p${index}_${step}`
+        ).checked;
+
+        updateLed(index,state);
+
+        leds[index].step=(step+1)%6;
+
+        const period=parseInt(
+            document.getElementById(`period${index}`).value
+        );
+
+        leds[index].timer=
+            setTimeout(nextStep,period);
+    }
+
+    nextStep();
+}
+
+function startSimulation(){
+
+    stopSimulation();
+
+    for(let i=0;i<4;i++){
+
+        leds[i].step=0;
+
+        runLed(i);
+    }
+}
+
+function stopSimulation(){
+
+    for(let i=0;i<4;i++){
+
+        clearTimeout(leds[i].timer);
+
+        updateLed(i,false);
+    }
+}
+
+function toggleDisplayMode(){
+
+    document.body.classList.toggle("display-mode");
+}
+
+</script>
+
+</body>
+</html>
