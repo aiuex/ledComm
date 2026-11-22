@@ -3,10 +3,9 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>LED Detector</title>
+<title>2 LED Detector</title>
 
 <style>
-
 body{
     margin:0;
     padding:10px;
@@ -15,91 +14,67 @@ body{
     font-family:sans-serif;
 }
 
-h2{
-    margin:0 0 10px 0;
-    text-align:center;
-    font-size:18px;
-}
-
-button{
-    padding:10px 16px;
-    margin-bottom:10px;
+video{
+    width:100%;
+    border-radius:8px;
 }
 
 .video-wrap{
     position:relative;
 }
 
-video{
-    width:100%;
-    background:black;
-    border-radius:8px;
-}
-
-.target{
+.roi{
     position:absolute;
-    left:50%;
-    top:50%;
+    border:2px solid lime;
     width:20px;
     height:20px;
-    border:2px solid lime;
-    transform:translate(-50%,-50%);
+    left:50%;
+    transform:translateX(-50%);
+}
+
+#roi1{
+    top:42%;
+}
+#roi2{
+    top:58%;
 }
 
 canvas{
     width:100%;
-    height:160px;
     background:black;
     border-radius:8px;
     margin-top:8px;
-}
-
-.control-panel{
-    margin-top:10px;
-}
-
-.control-panel label{
-    display:block;
-    margin:10px 0;
-}
-
-.control-panel span{
-    font-weight:bold;
-}
-
-.stats{
-    margin-top:10px;
-    display:grid;
-    grid-template-columns:1fr 1fr;
-    gap:4px;
 }
 
 .card{
     background:#222;
     padding:6px;
     border-radius:6px;
-    font-size:12px;
+    margin-top:8px;
+}
+
+.stats{
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    gap:6px;
 }
 
 .status-on{
     color:#00ff55;
-    font-weight:bold;
 }
 
 .status-off{
     color:#ff5555;
-    font-weight:bold;
 }
 
 input[type=range]{
     width:100%;
 }
-
 </style>
 </head>
 <body>
 
-<h2>LED Detector</h2>
+<h3>2 LED Detector</h3>
 
 <button id="startBtn">
 カメラ開始
@@ -113,73 +88,72 @@ input[type=range]{
         playsinline>
     </video>
 
-    <div class="target"></div>
+    <div class="roi" id="roi1"></div>
+    <div class="roi" id="roi2"></div>
 
 </div>
 
 <canvas
     id="graph"
     width="800"
-    height="200">
+    height="250">
 </canvas>
 
-<div class="control-panel">
+<div class="card">
 
-    <label>
-        ROIサイズ :
-        <span id="roiValue">20</span> px
-        <input
-            type="range"
-            id="roiSize"
-            min="3"
-            max="50"
-            value="20">
-    </label>
+ROIサイズ
+<span id="roiValue">20</span>
 
-    <label>
-        閾値 :
-        <span id="thresholdValue">80</span>
-        <input
-            type="range"
-            id="threshold"
-            min="0"
-            max="255"
-            value="80">
-    </label>
+<input
+type="range"
+id="roiSize"
+min="3"
+max="50"
+value="20">
+
+</div>
+
+<div class="card">
+
+閾値
+<span id="thresholdValue">80</span>
+
+<input
+type="range"
+id="threshold"
+min="0"
+max="255"
+value="80">
 
 </div>
 
 <div class="stats">
 
-    <div class="card">
-        輝度<br>
-        <span id="brightness">0</span>
-    </div>
+<div class="card">
+LED1<br>
+Brightness:
+<span id="b1">0</span><br>
+State:
+<span id="s1">---</span>
+</div>
 
-    <div class="card">
-        状態<br>
-        <span id="state">---</span>
-    </div>
+<div class="card">
+LED2<br>
+Brightness:
+<span id="b2">0</span><br>
+State:
+<span id="s2">---</span>
+</div>
 
-    <div class="card">
-        差分<br>
-        <span id="diff">0</span>
-    </div>
+<div class="card">
+FPS<br>
+<span id="fps">-</span>
+</div>
 
-    <div class="card">
-        FPS<br>
-        <span id="fps">---</span>
-    </div>
-
-    <div class="card">
-        周期<br>
-        <span id="period">---</span>
-    </div>
-
-    <div class="card">
-        周波数<br>
-        <span id="freq">---</span>
-    </div>
+<div class="card">
+Diff<br>
+<span id="diff">-</span>
+</div>
 
 </div>
 
@@ -200,67 +174,56 @@ document.createElement("canvas");
 const workCtx =
 workCanvas.getContext("2d");
 
-const thresholdSlider =
-document.getElementById("threshold");
-
-const thresholdValue =
-document.getElementById(
-"thresholdValue"
-);
-
 const roiSlider =
 document.getElementById("roiSize");
 
-const roiValue =
-document.getElementById(
-"roiValue"
-);
+const thresholdSlider =
+document.getElementById("threshold");
 
-const target =
-document.querySelector(".target");
+let history1=[];
+let history2=[];
 
-let history = [];
-let transitions = [];
-let prevState = null;
-
-let frameCount = 0;
-let lastFpsTime =
-performance.now();
-
-thresholdSlider.addEventListener(
-"input",
-()=>{
-    thresholdValue.textContent =
-    thresholdSlider.value;
-});
+let frameCount=0;
+let lastFps=performance.now();
 
 roiSlider.addEventListener(
 "input",
 ()=>{
 
-    const size =
+    const size=
     roiSlider.value;
 
-    roiValue.textContent =
-    size;
+    document.getElementById(
+        "roiValue"
+    ).textContent=size;
 
-    target.style.width =
-    size + "px";
+    document
+    .querySelectorAll(".roi")
+    .forEach(r=>{
 
-    target.style.height =
-    size + "px";
+        r.style.width=
+        size+"px";
+
+        r.style.height=
+        size+"px";
+
+    });
+
 });
 
-document
-.getElementById("startBtn")
-.addEventListener(
-"click",
-startCamera
+thresholdSlider.addEventListener(
+"input",
+()=>{
+    document.getElementById(
+        "thresholdValue"
+    ).textContent=
+    thresholdSlider.value;
+}
 );
 
 async function startCamera(){
 
-    const stream =
+    const stream=
     await navigator
     .mediaDevices
     .getUserMedia({
@@ -271,16 +234,16 @@ async function startCamera(){
 
     });
 
-    video.srcObject =
+    video.srcObject=
     stream;
 
-    video.onloadedmetadata =
+    video.onloadedmetadata=
     ()=>{
 
-        workCanvas.width =
+        workCanvas.width=
         video.videoWidth;
 
-        workCanvas.height =
+        workCanvas.height=
         video.videoHeight;
 
         requestAnimationFrame(
@@ -289,16 +252,46 @@ async function startCamera(){
     };
 }
 
-function analyze(){
+document
+.getElementById("startBtn")
+.addEventListener(
+"click",
+startCamera
+);
 
-    if(video.videoWidth===0){
+function roiBrightness(cx,cy,size){
 
-        requestAnimationFrame(
-            analyze
-        );
+    const image=
+    workCtx.getImageData(
+        cx-size/2,
+        cy-size/2,
+        size,
+        size
+    );
 
-        return;
+    let sum=0;
+
+    for(
+        let i=0;
+        i<image.data.length;
+        i+=4
+    ){
+
+        sum+=
+        (
+        image.data[i]
+        +
+        image.data[i+1]
+        +
+        image.data[i+2]
+        )/3;
     }
+
+    return sum/
+    (image.data.length/4);
+}
+
+function analyze(){
 
     workCtx.drawImage(
         video,
@@ -308,127 +301,88 @@ function analyze(){
         workCanvas.height
     );
 
-    const size =
+    const roiSize=
     Number(
         roiSlider.value
     );
 
-    const x =
-    workCanvas.width/2
-    - size/2;
+    const cx=
+    workCanvas.width/2;
 
-    const y =
-    workCanvas.height/2
-    - size/2;
-
-    const image =
-    workCtx.getImageData(
-        x,
-        y,
-        size,
-        size
+    const b1=
+    roiBrightness(
+        cx,
+        workCanvas.height*0.42,
+        roiSize
     );
 
-    let sum = 0;
+    const b2=
+    roiBrightness(
+        cx,
+        workCanvas.height*0.58,
+        roiSize
+    );
 
-    for(
-        let i=0;
-        i<image.data.length;
-        i+=4
-    ){
+    history1.push(b1);
+    history2.push(b2);
 
-        const r =
-        image.data[i];
+    if(history1.length>300){
 
-        const g =
-        image.data[i+1];
-
-        const b =
-        image.data[i+2];
-
-        sum +=
-        (r+g+b)/3;
+        history1.shift();
+        history2.shift();
     }
 
-    const brightness =
-    sum/(image.data.length/4);
-
-    document
-    .getElementById(
-        "brightness"
-    )
-    .textContent =
-    brightness.toFixed(1);
-
-    const threshold =
+    const threshold=
     Number(
         thresholdSlider.value
     );
 
-    const diff =
-    brightness
-    - threshold;
+    document
+    .getElementById("b1")
+    .textContent=
+    b1.toFixed(1);
 
     document
-    .getElementById(
-        "diff"
-    )
-    .textContent =
-    diff.toFixed(1);
+    .getElementById("b2")
+    .textContent=
+    b2.toFixed(1);
 
-    const state =
-    brightness > threshold;
+    const s1=
+    b1>threshold;
 
-    document
-    .getElementById(
-        "state"
-    )
-    .textContent =
-    state ?
-    "ON" :
-    "OFF";
+    const s2=
+    b2>threshold;
 
     document
-    .getElementById(
-        "state"
-    )
-    .className =
-    state ?
-    "status-on" :
+    .getElementById("s1")
+    .textContent=
+    s1?"ON":"OFF";
+
+    document
+    .getElementById("s2")
+    .textContent=
+    s2?"ON":"OFF";
+
+    document
+    .getElementById("s1")
+    .className=
+    s1?
+    "status-on":
     "status-off";
 
-    const now =
-    performance.now();
+    document
+    .getElementById("s2")
+    .className=
+    s2?
+    "status-on":
+    "status-off";
 
-    if(
-        prevState!==null &&
-        prevState!==state
-    ){
-
-        transitions.push(now);
-
-        if(
-            transitions.length>10
-        ){
-
-            transitions.shift();
-        }
-
-        calculateFrequency();
-    }
-
-    prevState = state;
-
-    history.push(
-        brightness
-    );
-
-    if(
-        history.length > 300
-    ){
-
-        history.shift();
-    }
+    document
+    .getElementById("diff")
+    .textContent=
+    Math.abs(
+        b1-b2
+    ).toFixed(1);
 
     drawGraph(
         threshold
@@ -436,75 +390,29 @@ function analyze(){
 
     frameCount++;
 
-    if(
-        now-lastFpsTime
-        >1000
-    ){
+    const now=
+    performance.now();
 
-        const fps =
-        frameCount*1000/
-        (
-            now-lastFpsTime
-        );
+    if(
+        now-lastFps>1000
+    ){
 
         document
         .getElementById("fps")
-        .textContent =
-        fps.toFixed(1);
+        .textContent=
+        (
+        frameCount*1000/
+        (now-lastFps)
+        ).toFixed(1);
 
-        frameCount = 0;
+        frameCount=0;
 
-        lastFpsTime = now;
+        lastFps=now;
     }
 
     requestAnimationFrame(
         analyze
     );
-}
-
-function calculateFrequency(){
-
-    if(
-        transitions.length < 4
-    ) return;
-
-    const periods=[];
-
-    for(
-        let i=2;
-        i<transitions.length;
-        i++
-    ){
-
-        periods.push(
-            transitions[i]
-            -
-            transitions[i-2]
-        );
-    }
-
-    const avg =
-    periods.reduce(
-        (a,b)=>a+b,0
-    ) / periods.length;
-
-    document
-    .getElementById(
-        "period"
-    )
-    .textContent =
-    avg.toFixed(0)
-    +" ms";
-
-    document
-    .getElementById(
-        "freq"
-    )
-    .textContent =
-    (
-        1000/avg
-    ).toFixed(2)
-    +" Hz";
 }
 
 function drawGraph(
@@ -518,95 +426,97 @@ threshold
         graph.height
     );
 
-    if(
-        history.length<2
-    ) return;
-
-    const minVal =
-    Math.min(
-        ...history
+    const all=
+    history1.concat(
+        history2
     );
 
-    const maxVal =
+    if(all.length<2)
+        return;
+
+    const min=
+    Math.min(...all)-5;
+
+    const max=
+    Math.max(...all)+5;
+
+    const scale=
     Math.max(
-        ...history
-    );
-
-    const low =
-    minVal - 5;
-
-    const high =
-    maxVal + 5;
-
-    const scale =
-    Math.max(
-        high-low,
+        max-min,
         1
     );
 
-    ctx.strokeStyle =
-    "#00ff55";
+    drawLine(
+        history1,
+        "#00ff55",
+        min,
+        scale
+    );
+
+    drawLine(
+        history2,
+        "#ffff00",
+        min,
+        scale
+    );
+
+    const ty=
+    graph.height
+    -
+    (
+    (threshold-min)
+    /scale
+    )
+    *
+    graph.height;
+
+    ctx.strokeStyle=
+    "red";
+
+    ctx.beginPath();
+
+    ctx.moveTo(0,ty);
+    ctx.lineTo(graph.width,ty);
+
+    ctx.stroke();
+}
+
+function drawLine(
+history,
+color,
+min,
+scale
+){
+
+    ctx.strokeStyle=
+    color;
 
     ctx.beginPath();
 
     history.forEach(
     (v,i)=>{
 
-        const x =
-        i *
-        graph.width /
+        const x=
+        i*
+        graph.width/
         history.length;
 
-        const y =
-        graph.height -
+        const y=
+        graph.height
+        -
         (
-            (v-low)
-            /scale
+        (v-min)
+        /scale
         )
         *
         graph.height;
 
-        if(i===0){
-
-            ctx.moveTo(
-                x,y
-            );
-
-        }else{
-
-            ctx.lineTo(
-                x,y
-            );
-        }
+        if(i===0)
+            ctx.moveTo(x,y);
+        else
+            ctx.lineTo(x,y);
 
     });
-
-    ctx.stroke();
-
-    ctx.strokeStyle =
-    "red";
-
-    const thresholdY =
-    graph.height
-    -
-    (
-      (threshold-low)
-      /scale
-    )
-    *
-    graph.height;
-
-    ctx.beginPath();
-
-    ctx.moveTo(
-        0,
-        thresholdY
-    );
-
-    ctx.lineTo(
-        graph.width,
-        thresholdY
-    );
 
     ctx.stroke();
 }
