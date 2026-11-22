@@ -221,3 +221,397 @@ document.querySelector(".target");
 
 let history = [];
 let transitions = [];
+let prevState = null;
+
+let frameCount = 0;
+let lastFpsTime =
+performance.now();
+
+thresholdSlider.addEventListener(
+"input",
+()=>{
+    thresholdValue.textContent =
+    thresholdSlider.value;
+});
+
+roiSlider.addEventListener(
+"input",
+()=>{
+
+    const size =
+    roiSlider.value;
+
+    roiValue.textContent =
+    size;
+
+    target.style.width =
+    size + "px";
+
+    target.style.height =
+    size + "px";
+});
+
+document
+.getElementById("startBtn")
+.addEventListener(
+"click",
+startCamera
+);
+
+async function startCamera(){
+
+    const stream =
+    await navigator
+    .mediaDevices
+    .getUserMedia({
+
+        video:{
+            facingMode:"environment"
+        }
+
+    });
+
+    video.srcObject =
+    stream;
+
+    video.onloadedmetadata =
+    ()=>{
+
+        workCanvas.width =
+        video.videoWidth;
+
+        workCanvas.height =
+        video.videoHeight;
+
+        requestAnimationFrame(
+            analyze
+        );
+    };
+}
+
+function analyze(){
+
+    if(video.videoWidth===0){
+
+        requestAnimationFrame(
+            analyze
+        );
+
+        return;
+    }
+
+    workCtx.drawImage(
+        video,
+        0,
+        0,
+        workCanvas.width,
+        workCanvas.height
+    );
+
+    const size =
+    Number(
+        roiSlider.value
+    );
+
+    const x =
+    workCanvas.width/2
+    - size/2;
+
+    const y =
+    workCanvas.height/2
+    - size/2;
+
+    const image =
+    workCtx.getImageData(
+        x,
+        y,
+        size,
+        size
+    );
+
+    let sum = 0;
+
+    for(
+        let i=0;
+        i<image.data.length;
+        i+=4
+    ){
+
+        const r =
+        image.data[i];
+
+        const g =
+        image.data[i+1];
+
+        const b =
+        image.data[i+2];
+
+        sum +=
+        (r+g+b)/3;
+    }
+
+    const brightness =
+    sum/(image.data.length/4);
+
+    document
+    .getElementById(
+        "brightness"
+    )
+    .textContent =
+    brightness.toFixed(1);
+
+    const threshold =
+    Number(
+        thresholdSlider.value
+    );
+
+    const diff =
+    brightness
+    - threshold;
+
+    document
+    .getElementById(
+        "diff"
+    )
+    .textContent =
+    diff.toFixed(1);
+
+    const state =
+    brightness > threshold;
+
+    document
+    .getElementById(
+        "state"
+    )
+    .textContent =
+    state ?
+    "ON" :
+    "OFF";
+
+    document
+    .getElementById(
+        "state"
+    )
+    .className =
+    state ?
+    "status-on" :
+    "status-off";
+
+    const now =
+    performance.now();
+
+    if(
+        prevState!==null &&
+        prevState!==state
+    ){
+
+        transitions.push(now);
+
+        if(
+            transitions.length>10
+        ){
+
+            transitions.shift();
+        }
+
+        calculateFrequency();
+    }
+
+    prevState = state;
+
+    history.push(
+        brightness
+    );
+
+    if(
+        history.length > 300
+    ){
+
+        history.shift();
+    }
+
+    drawGraph(
+        threshold
+    );
+
+    frameCount++;
+
+    if(
+        now-lastFpsTime
+        >1000
+    ){
+
+        const fps =
+        frameCount*1000/
+        (
+            now-lastFpsTime
+        );
+
+        document
+        .getElementById("fps")
+        .textContent =
+        fps.toFixed(1);
+
+        frameCount = 0;
+
+        lastFpsTime = now;
+    }
+
+    requestAnimationFrame(
+        analyze
+    );
+}
+
+function calculateFrequency(){
+
+    if(
+        transitions.length < 4
+    ) return;
+
+    const periods=[];
+
+    for(
+        let i=2;
+        i<transitions.length;
+        i++
+    ){
+
+        periods.push(
+            transitions[i]
+            -
+            transitions[i-2]
+        );
+    }
+
+    const avg =
+    periods.reduce(
+        (a,b)=>a+b,0
+    ) / periods.length;
+
+    document
+    .getElementById(
+        "period"
+    )
+    .textContent =
+    avg.toFixed(0)
+    +" ms";
+
+    document
+    .getElementById(
+        "freq"
+    )
+    .textContent =
+    (
+        1000/avg
+    ).toFixed(2)
+    +" Hz";
+}
+
+function drawGraph(
+threshold
+){
+
+    ctx.clearRect(
+        0,
+        0,
+        graph.width,
+        graph.height
+    );
+
+    if(
+        history.length<2
+    ) return;
+
+    const minVal =
+    Math.min(
+        ...history
+    );
+
+    const maxVal =
+    Math.max(
+        ...history
+    );
+
+    const low =
+    minVal - 5;
+
+    const high =
+    maxVal + 5;
+
+    const scale =
+    Math.max(
+        high-low,
+        1
+    );
+
+    ctx.strokeStyle =
+    "#00ff55";
+
+    ctx.beginPath();
+
+    history.forEach(
+    (v,i)=>{
+
+        const x =
+        i *
+        graph.width /
+        history.length;
+
+        const y =
+        graph.height -
+        (
+            (v-low)
+            /scale
+        )
+        *
+        graph.height;
+
+        if(i===0){
+
+            ctx.moveTo(
+                x,y
+            );
+
+        }else{
+
+            ctx.lineTo(
+                x,y
+            );
+        }
+
+    });
+
+    ctx.stroke();
+
+    ctx.strokeStyle =
+    "red";
+
+    const thresholdY =
+    graph.height
+    -
+    (
+      (threshold-low)
+      /scale
+    )
+    *
+    graph.height;
+
+    ctx.beginPath();
+
+    ctx.moveTo(
+        0,
+        thresholdY
+    );
+
+    ctx.lineTo(
+        graph.width,
+        thresholdY
+    );
+
+    ctx.stroke();
+}
+
+</script>
+
+</body>
+</html>
